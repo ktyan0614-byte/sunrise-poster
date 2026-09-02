@@ -1,0 +1,49 @@
+name: sunrise post
+
+# 不用 GitHub 的 schedule：它會排隊，實測會延遲數十分鐘到數小時。
+# 改由外部 cron 每天在固定時間（台灣 04:40）打 repository_dispatch 進來，
+# dispatch 事件不排隊，觸發後幾秒內就開始跑。
+#
+# 注意：外部 cron 只需要「每天固定時間打一次」，不需要知道日出幾點。
+# 真正對準日出的是下面那個 --wait：job 起來後自己算、自己睡到那一秒。
+on:
+  repository_dispatch:
+    types: [sunrise]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 執行方式
+        type: choice
+        options: [wait, now]
+        default: wait
+
+concurrency:
+  group: sunrise-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    # 正常從 04:40 睡到最晚 06:40 只要 2 小時，但放寬到接近 GitHub 上限（6 小時），
+    # 這樣半夜任何時間手動觸發測試都跑得起來。公開 repo 不計費，睡久一點無所謂。
+    # 公開 repo 的 Actions 分鐘數不計費，睡再久也不用心疼。
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # 先把該裝的、該查的都做完，等一下到了日出那一秒只剩下發文本身。
+      - run: pip install -r requirements.txt
+
+      - name: 睡到日出再發文
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          # 貼文用的字元集放 secret，公開的原始碼看不出實際內容。
+          POST_CHARS: ${{ secrets.POST_CHARS }}
+          POST_SUFFIX: ${{ secrets.POST_SUFFIX }}
+          # 不傳 THREADS_USER_ID，一律用 token 去 /me 查。
+        run: python post_sunrise.py --${{ github.event.inputs.mode || 'wait' }}

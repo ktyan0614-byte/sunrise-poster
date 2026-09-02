@@ -1,0 +1,4 @@
+# Only the sunrise calculation needs third-party packages.
+# The posting path is stdlib-only, so no pip install on the hot path.
+astral>=3.2
+tzdata>=2024.1
