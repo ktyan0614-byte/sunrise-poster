@@ -134,10 +134,11 @@ def post_clock_in(
 ) -> None:
     """在剛發的貼文底下補一則回覆。沒設 REPLY_TEMPLATE 就不做。
 
-    可用欄位：{time} 發文時刻、{holiday_name} 下一個連假的代表假日、
-    {holiday_days} 距離連假第一天還有幾天（不是距離那個假日本身——
-    很多連假從前面的週末就開始了）。查不到下一個連假時，
-    含 holiday_* 的樣板會直接跳過（見下方 KeyError 分支）。
+    可用欄位：{time} 發文時刻、{holiday_name} 下一個連假的名字（已經是
+    「OO連假」的完整說法）、{holiday_days} 距離連假第一天還有幾天、
+    {holiday_length} 那段連假總共連休幾天——都是整段連續休息日的，
+    不是那個假日本身一天的（很多連假從前面的週末就開始了）。
+    查不到下一個連假時，含 holiday_* 的樣板會直接跳過（見下方 KeyError 分支）。
 
     刻意做成 best-effort：主貼文這時已經發出去了，
     回覆失敗不該讓整個 workflow 標紅，否則早上會誤以為當天沒發成功。
@@ -147,14 +148,16 @@ def post_clock_in(
         return
 
     fields = {"time": f"{posted_at:%H:%M:%S}"}
-    if "{holiday_name}" in template or "{holiday_days}" in template:
+    wants_holiday = any(f"{{{k}}}" in template for k in ("holiday_name", "holiday_days", "holiday_length"))
+    if wants_holiday:
         found = calendar_tw.next_long_weekend(posted_at.date())
         if not found:
             print("找不到下一個連假，跳過回覆。", file=sys.stderr)
             return
-        block_start, holiday_name = found
+        block_start, holiday_name, holiday_length = found
         fields["holiday_name"] = holiday_name
         fields["holiday_days"] = (block_start - posted_at.date()).days
+        fields["holiday_length"] = holiday_length
 
     try:
         text = template.format(**fields)

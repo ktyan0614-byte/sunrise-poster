@@ -56,14 +56,19 @@ def _is_generic_reason(reason: str) -> bool:
 
 def next_long_weekend(
     after: dt.date, horizon_days: int = 180, min_length: int = 2
-) -> tuple[dt.date, str] | None:
-    """從 after 隔天起找下一個連假，回傳（連假第一天, 代表性假日名稱）。
+) -> tuple[dt.date, str, int] | None:
+    """從 after 隔天起找下一個連假，回傳（連假第一天, 連假名稱, 連休天數）。
 
     「連假」定義成：包含至少一個實際假日、總長度至少 min_length 天的
     連續休息日區塊。回傳的日期是整段連續休息日的第一天，不是那個假日
-    本身的日期——很多連假其實從前一個週末就開始了（例如教師節是週一，
-    但連假實際上從週六就開始）。單獨一天、沒接到週末的假日
-    （例如元旦剛好卡在週間）不算連假，會被跳過繼續往後找。
+    本身的日期，天數也是整段的——台灣人講「中秋連假」，指的是連著的
+    週休二日也算進去的那幾天，不是只算國定假日本身那一天
+    （教師節是週一，但連假實際上從週六就開始，是 3 天不是 1 天）。
+
+    名稱固定是「OO連假」。同一段連續假期裡如果不只一個具名假日
+    （例如中秋節接教師節連假），優先挑不是「補假」的那個當代表，
+    避免顯示成「補假連假」這種空洞的名字。單獨一天、沒接到週末的假日
+    不算連假，會被跳過繼續往後找。
     """
     day = after + dt.timedelta(days=1)
     end = after + dt.timedelta(days=horizon_days)
@@ -76,10 +81,21 @@ def next_long_weekend(
             stop = day
             while rest_reason(stop + dt.timedelta(days=1)):
                 stop += dt.timedelta(days=1)
-            if (stop - start).days + 1 >= min_length:
-                return start, reason
-            day = stop + dt.timedelta(days=1)
-            continue
+            length = (stop - start).days + 1
+            if length < min_length:
+                day = stop + dt.timedelta(days=1)
+                continue
+
+            names: list[str] = []
+            cursor = start
+            while cursor <= stop:
+                r = rest_reason(cursor)
+                if r and not _is_generic_reason(r) and r not in names:
+                    names.append(r)
+                cursor += dt.timedelta(days=1)
+            core_name = next((n for n in names if n != MAKEUP_HOLIDAY_REASON), names[0])
+
+            return start, f"{core_name}連假", length
         day += dt.timedelta(days=1)
     return None
 
