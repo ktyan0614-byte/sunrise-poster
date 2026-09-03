@@ -45,20 +45,55 @@ def _load_year(year: int) -> dict[str, dict]:
     return table
 
 
-def next_holiday(after: dt.date, horizon_days: int = 120) -> tuple[dt.date, str] | None:
-    """從 after 隔天起找下一個「非週末」的休息日，回傳 (日期, 名稱)。
+def _is_generic_reason(reason: str) -> bool:
+    """這個原因是不是「單純週末/沒有名字的放假」，不算一個值得倒數的假日。
 
-    只算國定假日/連假/補假，不算單純週末——因為「還有 N 天放假」
-    對比的基準本來就是平常的上班日，跟每週都有的週末混在一起沒意義。
+    退化模式下週末的原因會變成「週末（抓不到...改用簡化規則）」這種
+    帶說明的字串，所以用 startswith 而不是完全比對。
     """
-    for offset in range(1, horizon_days + 1):
-        day = after + dt.timedelta(days=offset)
-        if day.weekday() >= 5:
-            continue
+    return reason.startswith("週末") or reason == "放假"
+
+
+def next_long_weekend(
+    after: dt.date, horizon_days: int = 180, min_length: int = 2
+) -> tuple[dt.date, str] | None:
+    """從 after 隔天起找下一個連假，回傳（連假第一天, 代表性假日名稱）。
+
+    「連假」定義成：包含至少一個實際假日、總長度至少 min_length 天的
+    連續休息日區塊。回傳的日期是整段連續休息日的第一天，不是那個假日
+    本身的日期——很多連假其實從前一個週末就開始了（例如教師節是週一，
+    但連假實際上從週六就開始）。單獨一天、沒接到週末的假日
+    （例如元旦剛好卡在週間）不算連假，會被跳過繼續往後找。
+    """
+    day = after + dt.timedelta(days=1)
+    end = after + dt.timedelta(days=horizon_days)
+    while day <= end:
         reason = rest_reason(day)
-        if reason and reason not in ("週末", "放假"):
-            return day, reason
+        if reason and not _is_generic_reason(reason):
+            start = day
+            while rest_reason(start - dt.timedelta(days=1)):
+                start -= dt.timedelta(days=1)
+            stop = day
+            while rest_reason(stop + dt.timedelta(days=1)):
+                stop += dt.timedelta(days=1)
+            if (stop - start).days + 1 >= min_length:
+                return start, reason
+            day = stop + dt.timedelta(days=1)
+            continue
+        day += dt.timedelta(days=1)
     return None
+
+
+MAKEUP_HOLIDAY_REASON = "補假"
+
+
+def is_makeup_holiday(date: dt.date) -> bool:
+    """今天是不是「補假」——國定假日遇週末往後補的那天。
+
+    跟其他假日不同：這天有點像行政上湊出來的，不是真正的節日，
+    適合拿來做例外處理（例如照常發文但內容不一樣）。
+    """
+    return rest_reason(date) == MAKEUP_HOLIDAY_REASON
 
 
 def rest_reason(date: dt.date) -> str | None:

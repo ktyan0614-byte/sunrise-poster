@@ -134,8 +134,9 @@ def post_clock_in(
 ) -> None:
     """在剛發的貼文底下補一則回覆。沒設 REPLY_TEMPLATE 就不做。
 
-    可用欄位：{time} 發文時刻、{holiday_name} 下一個國定假日、
-    {holiday_days} 距離還有幾天。查不到下一個假日時，
+    可用欄位：{time} 發文時刻、{holiday_name} 下一個連假的代表假日、
+    {holiday_days} 距離連假第一天還有幾天（不是距離那個假日本身——
+    很多連假從前面的週末就開始了）。查不到下一個連假時，
     含 holiday_* 的樣板會直接跳過（見下方 KeyError 分支）。
 
     刻意做成 best-effort：主貼文這時已經發出去了，
@@ -147,13 +148,13 @@ def post_clock_in(
 
     fields = {"time": f"{posted_at:%H:%M:%S}"}
     if "{holiday_name}" in template or "{holiday_days}" in template:
-        found = calendar_tw.next_holiday(posted_at.date())
+        found = calendar_tw.next_long_weekend(posted_at.date())
         if not found:
-            print("找不到下一個國定假日，跳過回覆。", file=sys.stderr)
+            print("找不到下一個連假，跳過回覆。", file=sys.stderr)
             return
-        holiday_date, holiday_name = found
+        block_start, holiday_name = found
         fields["holiday_name"] = holiday_name
-        fields["holiday_days"] = (holiday_date - posted_at.date()).days
+        fields["holiday_days"] = (block_start - posted_at.date()).days
 
     try:
         text = template.format(**fields)
@@ -214,18 +215,29 @@ def main() -> int:
         print("　".join(TextMaker.from_env().make() for _ in range(10)))
         return 0
 
+    makeup_text = os.environ.get("MAKEUP_TEXT", "").strip()
+
     if args.show:
         for offset in range(14):
             day = now.date() + dt.timedelta(days=offset)
             rest = calendar_tw.rest_reason(day)
-            mark = f"休息（{rest}）" if rest else "發文"
+            if rest and calendar_tw.is_makeup_holiday(day) and makeup_text:
+                mark = "發文（補假，簡短版）"
+            elif rest:
+                mark = f"休息（{rest}）"
+            else:
+                mark = "發文"
             weekday = "一二三四五六日"[day.weekday()]
             print(f"{day}（{weekday}）日出 {sunrise_at(day, lat, lon):%H:%M:%S}  {mark}")
         return 0
 
+    # 補假是行政上湊出來的假，不算真正的節日——設了 MAKEUP_TEXT 的話
+    # 這天照樣發文（通常是比平常短、更敷衍的內容），其他假日則完全沉默。
+    is_makeup_day = False
     if not args.force:
         rest = calendar_tw.rest_reason(now.date())
-        if rest:
+        is_makeup_day = bool(rest) and calendar_tw.is_makeup_holiday(now.date()) and bool(makeup_text)
+        if rest and not is_makeup_day:
             print(f"{now:%Y-%m-%d} 是休息日（{rest}），今天不發。")
             return 0
 
@@ -234,8 +246,10 @@ def main() -> int:
         print("錯誤：沒有 THREADS_ACCESS_TOKEN", file=sys.stderr)
         return 2
 
-    # 設了 POST_TEXT 就用固定內文，沒設就依 POST_CHARS 隨機組。
+    # 補假特例 > 固定內文 > 隨機組合，三選一決定今天要發什麼。
     fixed = os.environ.get("POST_TEXT", "").strip() or None
+    if is_makeup_day:
+        fixed = makeup_text
     maker = TextMaker.from_env() if fixed is None else None
     text = fixed if fixed is not None else maker.make()
 
