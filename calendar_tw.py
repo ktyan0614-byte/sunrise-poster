@@ -54,21 +54,44 @@ def _is_generic_reason(reason: str) -> bool:
     return reason.startswith("週末") or reason == "放假"
 
 
+# 台灣的國定假日是固定的，這份表把政府行事曆的原始名稱換成台灣人
+# 慣用的連假簡稱（例如「國慶日」→「國慶連假」而不是「國慶日連假」）。
+# 補假不在表裡：它是行政上湊出來的，不當代表名字用；一整段連假查不到
+# 任何具名假日時才會退回用它，2026、2027 兩年都驗證過不會發生。
+HOLIDAY_SHORT_NAMES = {
+    "開國紀念日": "元旦",
+    "小年夜": "春節",
+    "農曆除夕": "春節",
+    "春節": "春節",
+    "和平紀念日": "228",
+    "兒童節": "清明",
+    "清明節": "清明",
+    "勞動節": "勞動節",
+    "端午節": "端午",
+    "中秋節": "中秋",
+    "孔子誕辰紀念日/教師節": "教師節",
+    "國慶日": "國慶",
+    "臺灣光復暨金門古寧頭大捷紀念日": "光復節",
+    "行憲紀念日": "行憲紀念日",
+}
+
+
 def next_long_weekend(
     after: dt.date, horizon_days: int = 180, min_length: int = 2
-) -> tuple[dt.date, str, int] | None:
-    """從 after 隔天起找下一個連假，回傳（連假第一天, 連假名稱, 連休天數）。
+) -> tuple[dt.date, str] | None:
+    """從 after 隔天起找下一個連假，回傳（連假第一天, 連假名稱）。
 
     「連假」定義成：包含至少一個實際假日、總長度至少 min_length 天的
     連續休息日區塊。回傳的日期是整段連續休息日的第一天，不是那個假日
-    本身的日期，天數也是整段的——台灣人講「中秋連假」，指的是連著的
-    週休二日也算進去的那幾天，不是只算國定假日本身那一天
-    （教師節是週一，但連假實際上從週六就開始，是 3 天不是 1 天）。
+    本身的日期——台灣人講「中秋連假」，指的是連著的週休二日也算進去
+    的那幾天，不是只算國定假日本身那一天（教師節是週一，但連假實際上
+    從週六就開始）。
 
-    名稱固定是「OO連假」。同一段連續假期裡如果不只一個具名假日
-    （例如中秋節接教師節連假），優先挑不是「補假」的那個當代表，
-    避免顯示成「補假連假」這種空洞的名字。單獨一天、沒接到週末的假日
-    不算連假，會被跳過繼續往後找。
+    名稱固定是「OO連假」，查 HOLIDAY_SHORT_NAMES 換成台灣人慣用的簡稱。
+    同一段連續假期裡不只一個具名假日時（例如中秋節接教師節），
+    挑時間上最早出現、而且在對照表裡有簡稱的那個當代表；表裡沒有的
+    名稱（理論上不會發生在目前的資料範圍內）就退回用原始名稱。
+    單獨一天、沒接到週末的假日不算連假，會被跳過繼續往後找。
     """
     day = after + dt.timedelta(days=1)
     end = after + dt.timedelta(days=horizon_days)
@@ -81,8 +104,7 @@ def next_long_weekend(
             stop = day
             while rest_reason(stop + dt.timedelta(days=1)):
                 stop += dt.timedelta(days=1)
-            length = (stop - start).days + 1
-            if length < min_length:
+            if (stop - start).days + 1 < min_length:
                 day = stop + dt.timedelta(days=1)
                 continue
 
@@ -93,9 +115,12 @@ def next_long_weekend(
                 if r and not _is_generic_reason(r) and r not in names:
                     names.append(r)
                 cursor += dt.timedelta(days=1)
-            core_name = next((n for n in names if n != MAKEUP_HOLIDAY_REASON), names[0])
+            core_name = next(
+                (HOLIDAY_SHORT_NAMES[n] for n in names if n in HOLIDAY_SHORT_NAMES),
+                next((n for n in names if n != MAKEUP_HOLIDAY_REASON), names[0]),
+            )
 
-            return start, f"{core_name}連假", length
+            return start, f"{core_name}連假"
         day += dt.timedelta(days=1)
     return None
 
