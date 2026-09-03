@@ -45,6 +45,22 @@ def _load_year(year: int) -> dict[str, dict]:
     return table
 
 
+def next_holiday(after: dt.date, horizon_days: int = 120) -> tuple[dt.date, str] | None:
+    """從 after 隔天起找下一個「非週末」的休息日，回傳 (日期, 名稱)。
+
+    只算國定假日/連假/補假，不算單純週末——因為「還有 N 天放假」
+    對比的基準本來就是平常的上班日，跟每週都有的週末混在一起沒意義。
+    """
+    for offset in range(1, horizon_days + 1):
+        day = after + dt.timedelta(days=offset)
+        if day.weekday() >= 5:
+            continue
+        reason = rest_reason(day)
+        if reason and reason not in ("週末", "放假"):
+            return day, reason
+    return None
+
+
 def rest_reason(date: dt.date) -> str | None:
     """今天要休息的話回傳原因，要上班則回 None。
 

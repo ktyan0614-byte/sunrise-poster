@@ -141,11 +141,21 @@ gh secret set SECRET_UPDATER_PAT
 | `POST_LENGTH` | `3` | 每則取幾個字 |
 | `POST_SUFFIX` | （空）| 接在後面的固定字尾 |
 | `POST_TEXT` | （空）| 填了就固定發這句，忽略上面三個 |
-| `REPLY_TEMPLATE` | （空）| 貼文底下那則回覆的樣板，`{time}` 換成發文時刻；留空就不發 |
+| `REPLY_TEMPLATE` | （空）| 貼文底下那則回覆的樣板；留空就不發，見下方可用欄位 |
 | `LAT` / `LON` | 台北 | 觀測地點 |
 | `SETTLE_SECONDS` | `10` | 建 container 到 publish 的間隔，也是提早起跑的秒數 |
 | `GRACE_MINUTES` | `60` | job 起太晚時，比日出晚超過這麼久就不補發 |
 | `MAX_WAIT_MINUTES` | `330` | 睡眠時間上限，防呆用 |
+
+## REPLY_TEMPLATE 可用欄位
+
+| 欄位 | 說明 |
+| --- | --- |
+| `{time}` | 實際發文時刻（HH:MM:SS） |
+| `{holiday_name}` | 下一個國定假日的名稱（查 `calendar_tw.next_holiday`） |
+| `{holiday_days}` | 距離那個假日還有幾天 |
+
+含 `holiday_*` 的樣板在查不到下一個假日時會直接跳過（記警告、不發回覆）。
 
 ## 維運注意
 

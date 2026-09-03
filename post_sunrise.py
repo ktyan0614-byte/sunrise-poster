@@ -132,10 +132,11 @@ def already_posted_today(
 def post_clock_in(
     token: str, user_id: str, post_id: str, posted_at: dt.datetime, settle: int
 ) -> None:
-    """在剛發的貼文底下補一則帶時間的回覆。沒設 REPLY_TEMPLATE 就不做。
+    """在剛發的貼文底下補一則回覆。沒設 REPLY_TEMPLATE 就不做。
 
-    Threads 的手機介面只顯示相對時間（「5 小時前」），
-    看不出貼文時刻整年會從 05:03 漂到 06:40。這則回覆是唯一能讓那件事被看見的管道。
+    可用欄位：{time} 發文時刻、{holiday_name} 下一個國定假日、
+    {holiday_days} 距離還有幾天。查不到下一個假日時，
+    含 holiday_* 的樣板會直接跳過（見下方 KeyError 分支）。
 
     刻意做成 best-effort：主貼文這時已經發出去了，
     回覆失敗不該讓整個 workflow 標紅，否則早上會誤以為當天沒發成功。
@@ -144,8 +145,18 @@ def post_clock_in(
     if not template:
         return
 
+    fields = {"time": f"{posted_at:%H:%M:%S}"}
+    if "{holiday_name}" in template or "{holiday_days}" in template:
+        found = calendar_tw.next_holiday(posted_at.date())
+        if not found:
+            print("找不到下一個國定假日，跳過回覆。", file=sys.stderr)
+            return
+        holiday_date, holiday_name = found
+        fields["holiday_name"] = holiday_name
+        fields["holiday_days"] = (holiday_date - posted_at.date()).days
+
     try:
-        text = template.format(time=f"{posted_at:%H:%M:%S}")
+        text = template.format(**fields)
     except (KeyError, IndexError) as exc:
         print(f"REPLY_TEMPLATE 格式有誤，跳過回覆：{exc}", file=sys.stderr)
         return
