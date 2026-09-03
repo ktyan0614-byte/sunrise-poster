@@ -73,9 +73,10 @@ python post_sunrise.py --force
 
 ```
 gh secret set THREADS_ACCESS_TOKEN
-gh secret set POST_CHARS
-gh secret set POST_SUFFIX
 ```
+
+`POST_CHARS`、`POST_SUFFIX`、`REPLY_TEMPLATE` 含中文，**一定要走網頁設定**——
+cmd 的 cp950 主控台會把貼上的中文吃掉，變成空值送出去。
 
 `POST_CHARS` 放進 secret 的用意是：公開的原始碼只描述機制，
 看不出實際會發什麼內容。
@@ -140,6 +141,7 @@ gh secret set SECRET_UPDATER_PAT
 | `POST_LENGTH` | `3` | 每則取幾個字 |
 | `POST_SUFFIX` | （空）| 接在後面的固定字尾 |
 | `POST_TEXT` | （空）| 填了就固定發這句，忽略上面三個 |
+| `REPLY_TEMPLATE` | （空）| 貼文底下那則回覆的樣板，`{time}` 換成發文時刻；留空就不發 |
 | `LAT` / `LON` | 台北 | 觀測地點 |
 | `SETTLE_SECONDS` | `10` | 建 container 到 publish 的間隔，也是提早起跑的秒數 |
 | `GRACE_MINUTES` | `60` | job 起太晚時，比日出晚超過這麼久就不補發 |
@@ -148,6 +150,8 @@ gh secret set SECRET_UPDATER_PAT
 ## 維運注意
 
 - **Actions 的 log 是公開的**，所以發文成功那行只印字數與 post id，不印內文。
+- 回覆是 best-effort：主貼文發出去之後才發，失敗只記警告、不讓 workflow 標紅，
+  否則早上看到紅叉會誤以為當天沒發成功。
 - 去重是比對「今天發過、且形狀符合設定」的貼文，
   你自己另外發文不會影響它；但手動發了一則剛好符合形狀的貼文，那天就不會再發。
 - 去重查詢失敗時程式直接失敗、當天不發——寧可漏一天，也不要重複洗版。

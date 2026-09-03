@@ -45,5 +45,7 @@ jobs:
           # 貼文用的字元集放 secret，公開的原始碼看不出實際內容。
           POST_CHARS: ${{ secrets.POST_CHARS }}
           POST_SUFFIX: ${{ secrets.POST_SUFFIX }}
+          # 貼文底下那則帶時間的回覆；沒設就不發回覆。
+          REPLY_TEMPLATE: ${{ secrets.REPLY_TEMPLATE }}
           # 不傳 THREADS_USER_ID，一律用 token 去 /me 查。
         run: python post_sunrise.py --${{ github.event.inputs.mode || 'wait' }}

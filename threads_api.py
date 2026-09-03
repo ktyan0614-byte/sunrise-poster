@@ -66,13 +66,22 @@ def recent_posts(token: str, user_id: str, limit: int = 10) -> list[dict]:
     return data.get("data") or []
 
 
-def publish_text(token: str, user_id: str, text: str, *, settle_seconds: int = 10) -> str:
-    """兩段式發文：先建 container，等它就緒，再 publish。回傳貼文 id。"""
-    container = _call(
-        "POST",
-        f"{GRAPH}/{user_id}/threads",
-        {"media_type": "TEXT", "text": text, "access_token": token},
-    )
+def publish_text(
+    token: str,
+    user_id: str,
+    text: str,
+    *,
+    settle_seconds: int = 10,
+    reply_to_id: str | None = None,
+) -> str:
+    """兩段式發文：先建 container，等它就緒，再 publish。回傳貼文 id。
+
+    帶 reply_to_id 就是回覆某則貼文，流程與權限跟一般發文完全相同。
+    """
+    params = {"media_type": "TEXT", "text": text, "access_token": token}
+    if reply_to_id:
+        params["reply_to_id"] = reply_to_id
+    container = _call("POST", f"{GRAPH}/{user_id}/threads", params)
     creation_id = container.get("id")
     if not creation_id:
         raise ThreadsError(f"沒拿到 creation_id：{container}")

@@ -129,6 +129,38 @@ def already_posted_today(
     return False
 
 
+def post_clock_in(
+    token: str, user_id: str, post_id: str, posted_at: dt.datetime, settle: int
+) -> None:
+    """在剛發的貼文底下補一則帶時間的回覆。沒設 REPLY_TEMPLATE 就不做。
+
+    Threads 的手機介面只顯示相對時間（「5 小時前」），
+    看不出貼文時刻整年會從 05:03 漂到 06:40。這則回覆是唯一能讓那件事被看見的管道。
+
+    刻意做成 best-effort：主貼文這時已經發出去了，
+    回覆失敗不該讓整個 workflow 標紅，否則早上會誤以為當天沒發成功。
+    """
+    template = os.environ.get("REPLY_TEMPLATE", "").strip()
+    if not template:
+        return
+
+    try:
+        text = template.format(time=f"{posted_at:%H:%M:%S}")
+    except (KeyError, IndexError) as exc:
+        print(f"REPLY_TEMPLATE 格式有誤，跳過回覆：{exc}", file=sys.stderr)
+        return
+
+    try:
+        reply_id = threads_api.publish_text(
+            token, user_id, text, settle_seconds=settle, reply_to_id=post_id
+        )
+    except threads_api.ThreadsError as exc:
+        print(f"回覆失敗（主貼文已發出，不影響）：{exc}", file=sys.stderr)
+        return
+
+    print(f"回覆已發（post id {reply_id}）")
+
+
 def sleep_until(target: dt.datetime, max_wait_minutes: int) -> bool:
     """睡到指定時刻。太久或已過期就回 False，讓呼叫端決定怎麼辦。"""
     remaining = (target - dt.datetime.now(TZ)).total_seconds()
@@ -238,6 +270,8 @@ def main() -> int:
     print(f"發文成功（{len(text)} 字，post id {post_id}）於 {posted_at:%H:%M:%S}")
     if sunrise is not None:
         print(f"與日出誤差 {(posted_at - sunrise).total_seconds():+.1f} 秒")
+
+    post_clock_in(token, user_id, post_id, posted_at, settle)
     return 0
 
 
