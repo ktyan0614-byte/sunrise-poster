@@ -224,12 +224,29 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="只印出判斷結果，不真的發文")
     parser.add_argument("--show", action="store_true", help="印出未來 14 天的日出與排班就結束")
     parser.add_argument("--sample", action="store_true", help="隨機抽幾則看看就結束（只在本機用）")
+    parser.add_argument(
+        "--as-of",
+        metavar="YYYY-MM-DD",
+        help="把「今天」假裝成這一天，用來預覽補假/連假前一天的實際內容。"
+        "只能配合 --dry-run 或 --show，避免不小心真的用假日期發文。",
+    )
     args = parser.parse_args()
 
     load_dotenv()
     lat = float(os.environ.get("LAT", DEFAULT_LAT))
     lon = float(os.environ.get("LON", DEFAULT_LON))
     now = dt.datetime.now(TZ)
+
+    if args.as_of:
+        if not (args.dry_run or args.show):
+            print("錯誤：--as-of 只能配合 --dry-run 或 --show 使用。", file=sys.stderr)
+            return 2
+        try:
+            fake_date = dt.date.fromisoformat(args.as_of)
+        except ValueError:
+            print(f"錯誤：--as-of 看不懂這個日期：{args.as_of}", file=sys.stderr)
+            return 2
+        now = dt.datetime.combine(fake_date, now.timetz())
 
     if args.sample:
         print("　".join(TextMaker.from_env().make() for _ in range(10)))
