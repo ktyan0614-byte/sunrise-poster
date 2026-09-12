@@ -45,9 +45,12 @@ jobs:
           # 貼文用的字元集放 secret，公開的原始碼看不出實際內容。
           POST_CHARS: ${{ secrets.POST_CHARS }}
           POST_SUFFIX: ${{ secrets.POST_SUFFIX }}
-          # 平常封殺不讓它出現的排列，留給特殊日子專用；三個都沒設就跟以前一樣。
-          POST_BANNED: ${{ secrets.POST_BANNED }}
-          PRE_BREAK_TEXT: ${{ secrets.PRE_BREAK_TEXT }}
+          # 這兩個不放 secret：反正連假前一天就會真的貼到 Threads 上公開給
+          # 所有人看，藏起來只是延後曝光，換不到真正的保密，卻換來
+          # secret「設完看不到、打錯字也發現不了」的麻煩。直接寫在這裡，
+          # 隨時可以回來重讀、確認內容有沒有對。
+          POST_BANNED: 咕咕咕
+          PRE_BREAK_TEXT: 咕咕咕!
           MAKEUP_TEXT: ${{ secrets.MAKEUP_TEXT }}
           # 貼文底下那則帶時間的回覆；沒設就不發回覆。
           REPLY_TEMPLATE: ${{ secrets.REPLY_TEMPLATE }}

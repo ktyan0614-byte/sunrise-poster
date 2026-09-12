@@ -79,7 +79,10 @@ gh secret set THREADS_ACCESS_TOKEN
 cmd 的 cp950 主控台會把貼上的中文吃掉，變成空值送出去。
 
 `POST_CHARS` 放進 secret 的用意是：公開的原始碼只描述機制，
-看不出實際會發什麼內容。
+看不出實際會發什麼內容。`POST_BANNED`、`PRE_BREAK_TEXT` **不用設成 secret**，
+直接寫在 `sunrise.yml` 裡就好——這兩個值反正連假前一天就會真的貼到
+Threads 上公開，藏起來換不到真正的保密，卻換來 secret 設完看不到、
+打錯字也發現不了的麻煩。
 
 帳號 ID 不用設，程式拿 token 去 `/me` 查——手填容易錯，
 錯了會噴一個很難懂的 `Object with ID does not exist`。
@@ -177,6 +180,10 @@ gh secret set SECRET_UPDATER_PAT
 搭配 `POST_BANNED` 可以把這句特別版用到的排列，從平常的隨機抽籤裡
 拿掉，這樣它才真的只在連假前一天出現——平常抽到一模一樣的字就只是
 巧合，特別版才是真正的信號。
+
+這兩個值直接寫在 `sunrise.yml` 裡（不是 secret），改動時直接編輯檔案、
+`git commit` 推上去就好，隨時可以打開檔案重讀確認內容有沒有對——
+比 secret 少一層「設完看不到」的風險。
 
 優先順序（由高到低）：補假特例 > 連假前一天特例 > `POST_TEXT` 固定內文
 > 隨機組合。`--force` 會跳過補假與連假前一天這兩個特例，直接測隨機
