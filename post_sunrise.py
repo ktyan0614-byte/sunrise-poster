@@ -56,9 +56,13 @@ class TextMaker:
     """依設定隨機組出貼文內容，並判斷一篇貼文是不是本程式發的。
 
     字元集刻意放在設定裡而不是程式裡，這樣公開的原始碼看不出實際內容。
+    `POST_BANNED` 可以把特定排列從平常的抽籤裡拿掉，留給連假前一天
+    （見 `PRE_BREAK_TEXT`）這種特殊場合專用，讓那個組合平常不會出現。
     """
 
-    def __init__(self, chars: str, length: int, suffix: str) -> None:
+    def __init__(
+        self, chars: str, length: int, suffix: str, banned: frozenset[str] = frozenset()
+    ) -> None:
         if not chars:
             raise ConfigError(
                 "缺少 POST_CHARS：貼文用的字元集。\n"
@@ -69,18 +73,33 @@ class TextMaker:
         self.chars = chars
         self.length = length
         self.suffix = suffix
+        # 封殺的是「不含字尾」的排列本身，跟 PRE_BREAK_TEXT 這種完整字串不同層級——
+        # 平常抽籤永遠跳過它，讓它只在特殊日子被指定使用時才出現。
+        self.banned = banned
 
     @classmethod
     def from_env(cls) -> "TextMaker":
+        banned_raw = os.environ.get("POST_BANNED", "").strip()
+        banned = frozenset(b.strip() for b in banned_raw.split(",") if b.strip())
         return cls(
             chars=os.environ.get("POST_CHARS", "").strip(),
             length=int(os.environ.get("POST_LENGTH", "3")),
             suffix=os.environ.get("POST_SUFFIX", ""),
+            banned=banned,
         )
 
     def make(self) -> str:
-        """隨機組一則。可重複排列，所以整串同一個字也是合法的。"""
-        return "".join(random.choices(self.chars, k=self.length)) + self.suffix
+        """隨機組一則，跳過 POST_BANNED 裡封殺的排列。
+
+        可重複排列，所以整串同一個字本來就是合法的——封殺是額外加上去的
+        規則，不是排列本身不合法。組合空間夠大時幾次就會抽到，
+        真的抽不出來（例如把所有排列都封殺了）才會放棄。
+        """
+        for _ in range(1000):
+            body = "".join(random.choices(self.chars, k=self.length))
+            if body not in self.banned:
+                return body + self.suffix
+        raise ConfigError("POST_BANNED 封殺了所有排列，抽不出東西——檢查一下是不是設太多了")
 
     def matches(self, text: str) -> bool:
         """這篇貼文是不是本程式發的。
@@ -217,15 +236,20 @@ def main() -> int:
         return 0
 
     makeup_text = os.environ.get("MAKEUP_TEXT", "").strip()
+    pre_break_text = os.environ.get("PRE_BREAK_TEXT", "").strip()
 
     if args.show:
         for offset in range(14):
             day = now.date() + dt.timedelta(days=offset)
             rest = calendar_tw.rest_reason(day)
+            found = calendar_tw.next_long_weekend(day) if pre_break_text else None
+            is_pre_break = bool(found) and found[0] == day + dt.timedelta(days=1)
             if rest and calendar_tw.is_makeup_holiday(day) and makeup_text:
                 mark = "發文（補假，簡短版）"
             elif rest:
                 mark = f"休息（{rest}）"
+            elif is_pre_break:
+                mark = "發文（連假前一天，特別版）"
             else:
                 mark = "發文"
             weekday = "一二三四五六日"[day.weekday()]
@@ -242,15 +266,24 @@ def main() -> int:
             print(f"{now:%Y-%m-%d} 是休息日（{rest}），今天不發。")
             return 0
 
+    # 連假前一天：今天還是要上班，但明天就是連假第一天了。
+    # 設了 PRE_BREAK_TEXT 的話這天發那句固定內容，取代平常的隨機抽籤。
+    is_pre_break_day = False
+    if pre_break_text and not args.force and not is_makeup_day:
+        found = calendar_tw.next_long_weekend(now.date())
+        is_pre_break_day = bool(found) and found[0] == now.date() + dt.timedelta(days=1)
+
     token = os.environ.get("THREADS_ACCESS_TOKEN", "").strip()
     if not token:
         print("錯誤：沒有 THREADS_ACCESS_TOKEN", file=sys.stderr)
         return 2
 
-    # 補假特例 > 固定內文 > 隨機組合，三選一決定今天要發什麼。
+    # 補假特例 > 連假前一天特例 > 固定內文 > 隨機組合，決定今天要發什麼。
     fixed = os.environ.get("POST_TEXT", "").strip() or None
     if is_makeup_day:
         fixed = makeup_text
+    elif is_pre_break_day:
+        fixed = pre_break_text
     maker = TextMaker.from_env() if fixed is None else None
     text = fixed if fixed is not None else maker.make()
 
