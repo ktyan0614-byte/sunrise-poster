@@ -149,6 +149,10 @@ gh secret set SECRET_UPDATER_PAT
 | `PRE_BREAK_TEXT` | （空）| 連假前一天（今天上班、明天就是連假第一天）要發的固定內容 |
 | `MAKEUP_TEXT` | （空）| 補假那天要發的內容；留空就跟其他假日一樣沉默，見下方說明 |
 | `REPLY_TEMPLATE` | （空）| 貼文底下那則回覆的樣板；留空就不發，見下方可用欄位 |
+| `REPLY_TEMPLATE_ALT` | （空）| 週一且離連假還很遠時，有機率改用這份樣板，見下方說明 |
+| `STATUS_LINES` | （空）| `REPLY_TEMPLATE_ALT` 用的候選句，逗號分隔，等機率隨機抽一句 |
+| `STATUS_MIN_DAYS` | `10` | 離連假超過幾天才算「還很遠」 |
+| `STATUS_CHANCE` | `0.5` | 條件符合時，抽中 `REPLY_TEMPLATE_ALT` 的機率（0～1） |
 | `LAT` / `LON` | 台北 | 觀測地點 |
 | `SETTLE_SECONDS` | `10` | 建 container 到 publish 的間隔，也是提早起跑的秒數 |
 | `GRACE_MINUTES` | `60` | job 起太晚時，比日出晚超過這麼久就不補發 |
@@ -169,6 +173,22 @@ gh secret set SECRET_UPDATER_PAT
 兩年份 11 組連假都已對照確認過。單獨一天、沒接到週末的假日不算連假，
 會被跳過繼續往後找下一個；查不到下一個連假時，含 `holiday_*` 的樣板
 會直接跳過（記警告、不發回覆）。
+
+## 週一的偏題回覆
+
+離連假很近時念倒數合理，但離連假還有大半個月，每週一都念一樣的
+「還剩 23 天」「還剩 16 天」會顯得敷衍。設定 `REPLY_TEMPLATE_ALT` 跟
+`STATUS_LINES` 之後，符合以下條件時會有 `STATUS_CHANCE`（預設 50%）
+的機率整個換成別的內容：
+
+- 今天是週一
+- 距離下個連假超過 `STATUS_MIN_DAYS`（預設 10）天
+
+`REPLY_TEMPLATE_ALT` 可以用的欄位跟 `REPLY_TEMPLATE` 一樣，額外多一個
+`{status}`——從 `STATUS_LINES` 逗號分隔的清單裡隨機抽一句，等權重，
+之後隨時可以加新句子進去，不用改程式碼。條件沒中、或者
+`REPLY_TEMPLATE_ALT`／`STATUS_LINES` 沒設，一律退回用平常的
+`REPLY_TEMPLATE`。
 
 ## 連假前一天的特別版
 

@@ -151,33 +151,57 @@ def already_posted_today(
 def post_clock_in(
     token: str, user_id: str, post_id: str, posted_at: dt.datetime, settle: int
 ) -> None:
-    """在剛發的貼文底下補一則回覆。沒設 REPLY_TEMPLATE 就不做。
+    """在剛發的貼文底下補一則回覆。兩份樣板都沒設就不做。
 
-    可用欄位：{time} 發文時刻、{holiday_name} 下一個連假的名字（已經是
-    「OO連假」的完整說法）、{holiday_days} 距離連假第一天還有幾天——
-    算的是整段連續休息日的起點，不是那個假日本身一天的（很多連假
-    從前面的週末就開始了）。查不到下一個連假時，含 holiday_* 的樣板
-    會直接跳過（見下方 KeyError 分支）。
+    正常用 REPLY_TEMPLATE。如果今天是週一、離下個連假還很遠（超過
+    STATUS_MIN_DAYS，預設 10 天），有 STATUS_CHANCE（預設 50%）的機率
+    改用 REPLY_TEMPLATE_ALT——連假倒數還很遠時，每次都念一樣的倒數
+    顯得敷衍，不如偶爾換成跟連假無關的內容。
+
+    可用欄位：{time} 發文時刻、{holiday_name}/{holiday_days} 見連假
+    倒數說明、{status} 只有 REPLY_TEMPLATE_ALT 用得到，從 STATUS_LINES
+    （逗號分隔）隨機抽一句。查不到下一個連假時，含 holiday_* 的樣板
+    會直接跳過；REPLY_TEMPLATE_ALT 沒設或條件沒中，一律退回用
+    REPLY_TEMPLATE。
 
     刻意做成 best-effort：主貼文這時已經發出去了，
     回覆失敗不該讓整個 workflow 標紅，否則早上會誤以為當天沒發成功。
     """
     template = os.environ.get("REPLY_TEMPLATE", "").strip()
-    if not template:
+    alt_template = os.environ.get("REPLY_TEMPLATE_ALT", "").strip()
+    status_lines = [s.strip() for s in os.environ.get("STATUS_LINES", "").split(",") if s.strip()]
+
+    # 兩份樣板只要有一份可能用到連假資訊、或者有 ALT 樣板要判斷條件，就查一次。
+    needs_holiday_info = bool(alt_template) or any(
+        f"{{{k}}}" in template for k in ("holiday_name", "holiday_days")
+    )
+    holiday_info = calendar_tw.next_long_weekend(posted_at.date()) if needs_holiday_info else None
+
+    use_alt = False
+    if alt_template and status_lines and holiday_info:
+        days_left = (holiday_info[0] - posted_at.date()).days
+        min_days = int(os.environ.get("STATUS_MIN_DAYS", "10"))
+        chance = float(os.environ.get("STATUS_CHANCE", "0.5"))
+        if posted_at.date().weekday() == 0 and days_left > min_days and random.random() < chance:
+            use_alt = True
+
+    chosen = alt_template if use_alt else template
+    if not chosen:
         return
 
     fields = {"time": f"{posted_at:%H:%M:%S}"}
-    if "{holiday_name}" in template or "{holiday_days}" in template:
-        found = calendar_tw.next_long_weekend(posted_at.date())
-        if not found:
+    if use_alt:
+        fields["status"] = random.choice(status_lines)
+    if "{holiday_name}" in chosen or "{holiday_days}" in chosen:
+        if not holiday_info:
             print("找不到下一個連假，跳過回覆。", file=sys.stderr)
             return
-        block_start, holiday_name = found
+        block_start, holiday_name = holiday_info
         fields["holiday_name"] = holiday_name
         fields["holiday_days"] = (block_start - posted_at.date()).days
 
     try:
-        text = template.format(**fields)
+        text = chosen.format(**fields)
     except (KeyError, IndexError) as exc:
         print(f"REPLY_TEMPLATE 格式有誤，跳過回覆：{exc}", file=sys.stderr)
         return
