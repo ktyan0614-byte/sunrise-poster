@@ -54,9 +54,10 @@ jobs:
           MAKEUP_TEXT: ${{ secrets.MAKEUP_TEXT }}
           # 貼文底下那則帶時間的回覆；沒設就不發回覆。
           REPLY_TEMPLATE: ${{ secrets.REPLY_TEMPLATE }}
-          # 週一、離下個連假還很遠時，有機率改用這份樣板，跟 POST_BANNED
-          # 同理不放 secret——抽中的那句反正會被公開貼出來。
-          REPLY_TEMPLATE_ALT: "{time} 打卡｜{status}"
-          STATUS_LINES: 雞還活著,本雞正常運行,精神狀態正常
+          # 週一偏題回覆暫時關閉，先回復成只用 REPLY_TEMPLATE 的舊輸出。
+          # 兩行只要空著或整段拿掉都行，程式碼原封不動留著，之後要恢復
+          # 把下面這兩行取消註解、填回內容即可，不用改程式碼。
+          # REPLY_TEMPLATE_ALT: "{time} 打卡｜{status}"
+          # STATUS_LINES: 雞還活著,本雞正常運行,精神狀態正常
           # 不傳 THREADS_USER_ID，一律用 token 去 /me 查。
         run: python post_sunrise.py --${{ github.event.inputs.mode || 'wait' }}
