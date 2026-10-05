@@ -19,7 +19,16 @@ TIMEOUT = 30
 
 
 class ThreadsError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: int | None = None, subcode: int | None = None):
+        super().__init__(message)
+        # Meta 回傳的錯誤碼，讓呼叫端能分辨「暫時性」與「重試也沒用」的錯誤。
+        self.code = code
+        self.subcode = subcode
+
+
+# publish 時 Meta 偶爾還沒同步好剛建的 container，會回「Media Not Found」。
+# 這是暫時性的，等一下再試通常就好；其他 4xx（token 失效、權限不足）則不是。
+_MEDIA_NOT_FOUND = (24, 4279009)
 
 
 def _call(method: str, url: str, params: dict, *, retries: int = 3) -> dict:
@@ -40,7 +49,13 @@ def _call(method: str, url: str, params: dict, *, retries: int = 3) -> dict:
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")[:500]
             if exc.code < 500:
-                raise ThreadsError(f"HTTP {exc.code}: {body}") from None
+                code = subcode = None
+                try:
+                    err = json.loads(body).get("error", {})
+                    code, subcode = err.get("code"), err.get("error_subcode")
+                except (json.JSONDecodeError, AttributeError):
+                    pass  # body 被截斷或不是 JSON 時，就只是沒有錯誤碼而已
+                raise ThreadsError(f"HTTP {exc.code}: {body}", code=code, subcode=subcode) from None
             last_error = f"HTTP {exc.code}: {body}"
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = str(exc)
@@ -89,11 +104,25 @@ def publish_text(
     # Meta 建議建立 container 後稍等再發布，否則偶爾會 publish 失敗。
     time.sleep(settle_seconds)
 
-    published = _call(
-        "POST",
-        f"{GRAPH}/{user_id}/threads_publish",
-        {"creation_id": creation_id, "access_token": token},
-    )
+    # 只重試 publish，不重建 container：container 已經存在，重建只會多出孤兒。
+    # 只針對「Media Not Found」這種暫時性錯誤重試，其他錯誤（token 失效、
+    # 權限不足）重試也不會好，直接放行讓呼叫端看到真正原因。
+    waits = [5, 10, 20]
+    for attempt in range(len(waits) + 1):
+        try:
+            published = _call(
+                "POST",
+                f"{GRAPH}/{user_id}/threads_publish",
+                {"creation_id": creation_id, "access_token": token},
+            )
+            break
+        except ThreadsError as exc:
+            transient = (exc.code, exc.subcode) == _MEDIA_NOT_FOUND
+            if not transient or attempt == len(waits):
+                raise
+            print(f"publish 找不到 container，{waits[attempt]} 秒後重試"
+                  f"（第 {attempt + 1}/{len(waits)} 次）", flush=True)
+            time.sleep(waits[attempt])
     post_id = published.get("id")
     if not post_id:
         raise ThreadsError(f"發布失敗：{published}")
